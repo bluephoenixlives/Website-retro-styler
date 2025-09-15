@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Retroify — Upload & Customize Your Site (Single file)</title>
+<meta name="description" content="Upload HTML and restyle it into retro themes. Full CSS editor + live preview. Single-file, GitHub Pages-friendly."/>
+<style>
+  /* App UI styles (kept modern and compact so injected retro styles are separate) */
+  :root{
+    --bg:#0b1020; --panel:#0f1724; --muted:#98a6b3; --accent:#f59e0b; --glass: rgba(255,255,255,0.02);
+    --radius:12px; --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace;
+    color-scheme: dark;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    color:#e6eef6;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background: linear-gradient(180deg,#071026 0%, var(--bg) 100%);
+    padding:20px;
+    display:flex;
+    gap:20px;
+    align-items:flex-start;
+    justify-content:center;
+    font-size:15px;
+  }
+
+  .app{
+    width:100%;
+    max-width:1200px;
+    display:grid;
+    grid-template-columns: 420px 1fr;
+    gap:18px;
+    align-items:start;
+  }
+
+  .panel{
+    background: linear-gradient(180deg, rgba(255,255,255,0.02), var(--glass));
+    border-radius:var(--radius);
+    padding:14px;
+    border: 1px solid rgba(255,255,255,0.03);
+    box-shadow: 0 10px 30px rgba(2,6,23,0.6);
+  }
+
+  .left .panel { height: calc(100vh - 48px); overflow:auto; }
+  .right .panel { height: calc(100vh - 48px); display:flex; flex-direction:column; gap:12px; }
+
+  h1{margin:0 0 6px 0;font-size:1.05rem}
+  p.lead{margin:0 0 12px 0;color:var(--muted);font-size:0.93rem}
+
+  label{display:block;font-weight:600;margin:8px 0 6px 0}
+  input[type="file"]{display:block}
+  textarea, select, input[type="text"]{
+    width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.04);
+    background: rgba(0,0,0,0.26); color:inherit; font-size:0.95rem;
+  }
+
+  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  button{
+    background:var(--accent); color:#071026; border:0; padding:8px 12px; border-radius:9px; cursor:pointer;
+    font-weight:700;
+  }
+  button.ghost{background:transparent;color:var(--muted);border:1px solid rgba(255,255,255,0.04)}
+  .small{padding:6px 8px;font-size:0.92rem}
+  .muted{color:var(--muted);font-size:0.92rem}
+
+  .preset-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .preset-pill{background:rgba(255,255,255,0.02);padding:6px 8px;border-radius:9px;border:1px solid rgba(255,255,255,0.03);cursor:pointer}
+  .preset-pill.active{outline:2px solid rgba(245,158,11,0.18);box-shadow:0 6px 20px rgba(245,158,11,0.08)}
+
+  .editor { display:flex; gap:8px; height:100%; }
+  .editor .leftcol{width:540px; display:flex; flex-direction:column; gap:8px;}
+  .editor .rightcol{flex:1; display:flex; flex-direction:column; gap:8px;}
+
+  .code-area{flex:1; display:flex; flex-direction:column; gap:8px}
+  .code-area textarea{flex:1; font-family:var(--mono); font-size:13px; line-height:1.45; white-space:pre; resize:vertical; min-height:150px; padding:12px}
+  .preview-wrap{flex:1; display:flex; flex-direction:column; gap:8px;}
+  .preview-toolbar{display:flex; gap:8px; align-items:center; justify-content:space-between}
+  .preview{flex:1; border-radius:8px; overflow:hidden; border:1px solid rgba(255,255,255,0.03); background:#000}
+
+  .meta{display:flex; gap:8px; flex-wrap:wrap; align-items:center}
+  .warn{background:#3e1a0d;color:#ffd7b8;padding:8px;border-radius:8px;font-weight:700}
+
+  footer{margin-top:10px;color:var(--muted);font-size:12px;text-align:center}
+  @media (max-width:1024px){
+    .app{grid-template-columns:1fr; padding-bottom:70px}
+    .editor .leftcol{width:100%}
+  }
+</style>
+</head>
+<body>
+  <div class="app" role="main">
+    <div class="left">
+      <div class="panel">
+        <h1>Retroify — upload & customize</h1>
+        <p class="lead">Upload an HTML file or paste HTML, choose a retro preset, then edit the injected retro CSS with the live editor. Preview updates instantly. Single-file, client-side.</p>
+
+        <label for="file">Upload HTML file</label>
+        <input id="file" type="file" accept=".html,text/html" />
+
+        <label for="paste">Or paste HTML</label>
+        <textarea id="paste" placeholder="Paste full HTML here (or leave blank and upload file)"></textarea>
+
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="loadBtn">Load into preview</button>
+          <button id="clearSource" class="ghost small">Clear source</button>
+        </div>
+
+        <hr style="margin:12px 0;border:none;border-top:1px solid rgba(255,255,255,0.03)" />
+
+        <label>Retro Preset</label>
+        <div class="preset-list" id="presets">
+          <div class="preset-pill" data-key="synth">80s — Synthwave</div>
+          <div class="preset-pill" data-key="geocities">90s — GeoCities</div>
+          <div class="preset-pill" data-key="y2k">2000s — Early Web / Y2K</div>
+          <div class="preset-pill" data-key="b&w">Monochrome — CRT / Terminal</div>
+        </div>
+
+        <label style="margin-top:10px">Quick theme controls</label>
+        <div class="controls">
+          <label class="muted">Base color</label>
+          <input id="baseColor" type="color" value="#ff49a1" style="width:46px;padding:2px" />
+          <label class="muted">Accent color</label>
+          <input id="accentColor" type="color" value="#60a5fa" style="width:46px;padding:2px" />
+          <label class="muted">Font</label>
+          <select id="fontSelect" style="max-width:160px">
+            <option value="Press Start 2P, cursive">Press Start 2P (pixel)</option>
+            <option value="Courier New, monospace">Courier New</option>
+            <option value="Comic Sans MS, Comic Sans, cursive">Comic Sans</option>
+            <option value="Georgia, serif">Georgia</option>
+            <option value="Tahoma, Arial, sans-serif" selected>System UI</option>
+          </select>
+        </div>
+
+        <label style="margin-top:10px">Danger / script policy</label>
+        <div class="meta">
+          <label style="display:flex;gap:8px;align-items:center">
+            <input id="allowScripts" type="checkbox" /> <span class="muted">Enable original scripts (unsafe)</span>
+          </label>
+          <div class="muted" style="flex:1">When <strong>disabled</strong> (default), the iframe preview is sandboxed (no scripts). Enable only for trusted files — scripts will execute inside the preview.</div>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button id="downloadHTML">Download transformed HTML</button>
+          <button id="downloadCSS" class="ghost">Download CSS only</button>
+        </div>
+
+        <div style="margin-top:12px" class="muted">
+          <strong>Notes:</strong> This app edits the uploaded HTML client-side only. It does not send your content anywhere. If you enable scripts, you accept the risk that the uploaded HTML may run code in the preview iframe.
+        </div>
+
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="panel">
+        <div class="editor" role="region" aria-label="Editor and preview">
+          <div class="leftcol">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div>
+                <label style="margin-bottom:4px">Injected Retro CSS (editable)</label>
+                <div class="muted">Edit the CSS that will be injected into the uploaded page. Live preview updates as you type.</div>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button id="applyBtn" class="small">Apply</button>
+                <button id="resetPreset" class="ghost small">Reset to preset</button>
+              </div>
+            </div>
+            <div class="code-area">
+              <textarea id="cssEditor" spellcheck="false" aria-label="Retro CSS editor"></textarea>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center">
+              <label class="muted" style="margin:0">Compact view</label>
+              <button id="minifyCSS" class="ghost small">Minify CSS</button>
+              <button id="beautifyCSS" class="ghost small">Beautify CSS</button>
+            </div>
+          </div>
+
+          <div class="rightcol">
+            <div class="preview-toolbar">
+              <div>
+                <label class="muted">Preview (sandboxed)</label>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button id="openNewTab" class="small ghost">Open preview in new tab</button>
+                <button id="refreshPreview" class="small">Refresh</button>
+              </div>
+            </div>
+
+            <div class="preview" id="previewContainer" title="Live preview">
+              <iframe id="previewFrame" sandbox="allow-forms allow-pointer-lock" style="width:100%;height:100%;border:0;background:#fff" srcdoc="<body style='background:transparent;color:#666;font-family:system-ui;padding:18px'>No HTML loaded."></iframe>
+            </div>
+
+            <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+              <div class="muted">Preview size</div>
+              <select id="previewSize" class="small">
+                <option value="100%">Responsive</option>
+                <option value="1366px">Desktop 1366×768</option>
+                <option value="1024px">Tablet 1024×768</option>
+                <option value="375px">Mobile 375×812</option>
+              </select>
+              <div style="flex:1"></div>
+              <div id="status" class="muted">No file loaded</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="panel" style="text-align:left;font-size:13px">
+        <strong>How it works (short):</strong>
+        <ol style="margin:6px 0 0 18px;color:var(--muted)">
+          <li>Upload or paste HTML. Click <em>Load into preview</em>.</li>
+          <li>Choose a preset. The preset CSS will be injected into the page's <code>&lt;head&gt;</code> as a &lt;style&gt; tag.</li>
+          <li>Edit CSS in the editor. Click <em>Apply</em> or wait — edits update the preview instantly.</li>
+          <li>Download the transformed HTML or CSS when you're happy.</li>
+        </ol>
+        <div style="margin-top:8px" class="muted">Built for static hosting (GitHub Pages). Everything runs locally in your browser.</div>
+      </footer>
+    </div>
+  </div>
+
+<script>
+/* =========================
+   Retroify — single-file app
+   =========================
+   Key features:
+   - Client-side only.
+   - Injects user-editable CSS into uploaded HTML and shows a live preview using iframe.srcdoc.
+   - Sandbox: scripts disabled by default (iframe has no allow-scripts). "Enable scripts" will add allow-scripts but users are warned.
+   - Download combined HTML with embedded CSS.
+*/
+
+/* -----------------------
+   Preset retro CSS library
+   ----------------------- */
+const PRESETS = {
+  synth: {
+    name: "80s Synthwave",
+    css: `/* 80s Synthwave preset */
+:root{
+  --bg:#0b0512; --panel-bg:linear-gradient(180deg,#16022a,#02040b);
+  --accent: #ff49a1; --accent2:#60a5fa; --neon: rgba(255,73,161,0.12);
+  --font: "Press Start 2P", monospace;
+}
+html,body{height:100%; margin:0; font-family:var(--font); background:var(--panel-bg); color:#f0e7ff; -webkit-font-smoothing:antialiased}
+body{background-image:
+  radial-gradient(circle at 10% 10%, rgba(96,165,250,0.06), transparent 10%),
+  radial-gradient(circle at 90% 90%, rgba(255,73,161,0.04), transparent 10%),
+  linear-gradient(180deg,#020014,#0b0512 60%);}
+
+/* neon headings */
+h1,h2,h3,h4{color:var(--accent); text-shadow: 0 0 8px rgba(96,165,250,0.18), 0 0 18px rgba(255,73,161,0.12)}
+
+/* links and buttons */
+a,button{color:var(--accent2); background:transparent; text-decoration:none; border:2px solid rgba(255,255,255,0.04); padding:6px 8px; border-radius:6px}
+button:hover{box-shadow:0 8px 30px var(--neon), inset 0 -2px 6px rgba(0,0,0,0.25)}
+
+/* retro containers */
+.container{border:3px dotted rgba(255,255,255,0.04); padding:18px; margin:12px; background: rgba(255,255,255,0.02)}
+.kbd{display:inline-block;padding:6px 8px;border-radius:4px;background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.02);}
+`
+  },
+
+  geocities: {
+    name: "90s GeoCities",
+    css: `/* 90s GeoCities preset: flashy backgrounds, marquee vibes, pixel GIF borders */
+:root{
+  --bg:#ffe680; --accent:#ff2d2d; --font: "Comic Sans MS", "Comic Sans", cursive;
+}
+html,body{height:100%;margin:0;background:linear-gradient(135deg,#ffe680,#ffb3b3);font-family:var(--font);color:#111;}
+.marquee{width:100%;white-space:nowrap;overflow:hidden;border:3px dashed #000;padding:8px;background:#fff8}
+h1{font-size:2.2rem;color:#0066cc;text-shadow:1px 1px 0 #fff}
+img.pixel-border{border:4px outset #fff;padding:4px;background:#fff}
+.bling{display:inline-block;padding:6px 10px;border:2px solid #000;background:linear-gradient(#fff,#ffd)}
+a{color:var(--accent);font-weight:bold}
+.center{ text-align:center }
+.small-gif{width:48px;height:48px;vertical-align:middle;margin-right:8px}
+body *{box-shadow:none!important}
+`
+  },
+
+  y2k: {
+    name: "2000s / Y2K",
+    css: `/* Early-2000s Y2K preset: glossy gradients, beveled buttons */
+:root{--bg:#e6f0ff;--glass:linear-gradient(180deg,#fff,#e6f0ff);--accent:#2b6cb0;--font: Tahoma, Geneva, sans-serif}
+html,body{height:100%;margin:0;background:linear-gradient(180deg,#e6f0ff,#cfe0ff);font-family:var(--font);color:#04203a}
+button,input,select,textarea{border-radius:8px;border:1px solid rgba(0,0,0,0.08);padding:8px;background:var(--glass)}
+.panel{border:2px solid rgba(0,0,0,0.06);box-shadow: 0 8px 24px rgba(2,6,23,0.06)}
+h1{color:var(--accent);text-shadow:0 1px 0 #fff}
+`
+  },
+
+  "b&w": {
+    name: "Monochrome CRT / Terminal",
+    css: `/* Monochrome / Terminal look */
+:root{--bg:#000;--fg:#c7ff90;--font: "Courier New", monospace}
+html,body{height:100%;margin:0;background:#000;color:var(--fg);font-family:var(--font)}
+a{color:#9ef08d}
+code,pre{background:#020202;padding:6px;border-radius:4px}
+.container{border-top:3px solid #0f0;padding:10px}
+`
+  }
+};
+
+/* -----------------------
+   App state and helpers
+   ----------------------- */
+const state = {
+  sourceHTML: '',      // original uploaded/pasted HTML string
+  activePreset: 'synth',
+  injectedCSS: '',     // current CSS (editable)
+  allowScripts: false
+};
+
+const els = {
+  file: document.getElementById('file'),
+  paste: document.getElementById('paste'),
+  loadBtn: document.getElementById('loadBtn'),
+  clearSource: document.getElementById('clearSource'),
+  presets: document.getElementById('presets'),
+  cssEditor: document.getElementById('cssEditor'),
+  applyBtn: document.getElementById('applyBtn'),
+  resetPreset: document.getElementById('resetPreset'),
+  previewFrame: document.getElementById('previewFrame'),
+  downloadHTML: document.getElementById('downloadHTML'),
+  downloadCSS: document.getElementById('downloadCSS'),
+  allowScripts: document.getElementById('allowScripts'),
+  baseColor: document.getElementById('baseColor'),
+  accentColor: document.getElementById('accentColor'),
+  fontSelect: document.getElementById('fontSelect'),
+  status: document.getElementById('status'),
+  minifyCSS: document.getElementById('minifyCSS'),
+  beautifyCSS: document.getElementById('beautifyCSS'),
+  openNewTab: document.getElementById('openNewTab'),
+  refreshPreview: document.getElementById('refreshPreview'),
+  previewSize: document.getElementById('previewSize'),
+  presetsContainer: document.getElementById('presets')
+};
+
+/* -----------------------
+   Initialization
+   ----------------------- */
+function init(){
+  // populate preset pills & set handlers
+  const pills = Array.from(document.querySelectorAll('.preset-pill'));
+  pills.forEach(p=>{
+    p.addEventListener('click', () => {
+      setActivePreset(p.getAttribute('data-key'));
+      pills.forEach(x=>x.classList.toggle('active', x===p));
+    });
+    if(p.getAttribute('data-key') === state.activePreset) p.classList.add('active');
+  });
+
+  // set default CSS in editor
+  state.injectedCSS = PRESETS[state.activePreset].css;
+  setEditor(state.injectedCSS);
+
+  // file input
+  els.file.addEventListener('change', handleFile);
+  els.loadBtn.addEventListener('click', loadSourceIntoPreview);
+  els.clearSource.addEventListener('click', () => {
+    els.paste.value = '';
+    els.file.value = '';
+    state.sourceHTML = '';
+    setStatus('Source cleared');
+    renderPreview();
+  });
+
+  // apply/preset
+  els.applyBtn.addEventListener('click', () => {
+    state.injectedCSS = els.cssEditor.value;
+    renderPreview();
+    setStatus('Applied CSS to preview');
+  });
+
+  els.resetPreset.addEventListener('click', () => {
+    state.injectedCSS = PRESETS[state.activePreset].css;
+    setEditor(state.injectedCSS);
+    renderPreview();
+    setStatus('Reset to preset CSS');
+  });
+
+  // allow scripts toggle
+  els.allowScripts.addEventListener('change', (e)=>{
+    state.allowScripts = e.target.checked;
+    updateIframeSandbox();
+    setStatus('Script execution ' + (state.allowScripts ? 'enabled (unsafe)' : 'disabled'));
+  });
+
+  // download
+  els.downloadHTML.addEventListener('click', downloadTransformedHTML);
+  els.downloadCSS.addEventListener('click', downloadCSSOnly);
+
+  // live update control-color/font quick controls
+  els.baseColor.addEventListener('input', updateThemeVars);
+  els.accentColor.addEventListener('input', updateThemeVars);
+  els.fontSelect.addEventListener('change', updateThemeVars);
+
+  // minify / beautify
+  els.minifyCSS.addEventListener('click', ()=> {
+    els.cssEditor.value = minifyCSS(els.cssEditor.value);
+    setStatus('CSS minified');
+    renderPreview();
+  });
+  els.beautifyCSS.addEventListener('click', ()=> {
+    els.cssEditor.value = beautifyCSS(els.cssEditor.value);
+    setStatus('CSS formatted');
+    renderPreview();
+  });
+
+  // preview tools
+  els.openNewTab.addEventListener('click', ()=> {
+    const html = generateTransformedHTML();
+    const blob = new Blob([html], {type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setStatus('Opened preview in a new tab');
+    setTimeout(()=> URL.revokeObjectURL(url), 60000);
+  });
+  els.refreshPreview.addEventListener('click', ()=> { renderPreview(); setStatus('Preview refreshed'); });
+
+  // preview size
+  els.previewSize.addEventListener('change', ()=>{
+    const v = els.previewSize.value;
+    if(v === '100%'){ els.previewFrame.style.width = '100%'; els.previewFrame.style.height = '100%'; }
+    else { els.previewFrame.style.width = v; els.previewFrame.style.height = '812px'; }
+  });
+
+  // editor live update (debounced)
+  let liveTimer = null;
+  els.cssEditor.addEventListener('input', ()=>{
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(()=> {
+      state.injectedCSS = els.cssEditor.value;
+      renderPreview();
+      setStatus('Live CSS updated');
+    }, 400);
+  });
+
+  setStatus('Ready — choose a file or paste HTML');
+}
+
+/* -----------------------
+   File handling
+   ----------------------- */
+function handleFile(e){
+  const f = e.target.files && e.target.files[0];
+  if(!f) return;
+  if(!f.type || f.type.indexOf('html') === -1){
+    // allow through - user may have .html but different type
+  }
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    state.sourceHTML = String(ev.target.result || '');
+    els.paste.value = state.sourceHTML;
+    setStatus('Loaded file: ' + (f.name || 'uploaded'));
+    // auto-load preview
+    renderPreview();
+  };
+  reader.onerror = function(){
+    setStatus('Failed to read file', true);
+  };
+  reader.readAsText(f, 'UTF-8');
+}
+
+/* -----------------------
+   Preset handling
+   ----------------------- */
+function setActivePreset(key){
+  if(!PRESETS[key]) return;
+  state.activePreset = key;
+  state.injectedCSS = PRESETS[key].css;
+  setEditor(state.injectedCSS);
+  renderPreview();
+  setStatus('Preset: ' + PRESETS[key].name);
+}
+
+/* -----------------------
+   Theme quick controls
+   ----------------------- */
+function updateThemeVars(){
+  // Simple string replace in the CSS editor for common variables used in presets
+  const base = els.baseColor.value;
+  const accent = els.accentColor.value;
+  const font = els.fontSelect.value;
+  // Apply by adding :root override at top
+  const override = `:root{ --base:${base}; --accent:${accent}; --custom_font: ${font}; }\n`;
+  // Remove any previous override
+  const current = els.cssEditor.value.replace(/:root\{[\s\S]*?\}\s*/,'');
+  els.cssEditor.value = override + current;
+  state.injectedCSS = els.cssEditor.value;
+  renderPreview();
+}
+
+/* -----------------------
+   Inject & preview
+   ----------------------- */
+function loadSourceIntoPreview(){
+  const pasted = els.paste.value.trim();
+  if(pasted) state.sourceHTML = pasted;
+  if(!state.sourceHTML){
+    setStatus('No HTML source provided');
+    alert('Please upload an HTML file or paste the HTML into the textarea before loading.');
+    return;
+  }
+  renderPreview();
+  setStatus('Loaded source into preview');
+}
+
+function renderPreview(){
+  // Build final HTML with <style> injection
+  const html = generateTransformedHTML(state.sourceHTML, state.injectedCSS);
+  // Update iframe.srcdoc
+  try{
+    els.previewFrame.srcdoc = html;
+    updateIframeSandbox();
+  }catch(e){
+    // Fallback (some older browsers may not support srcdoc)
+    const doc = els.previewFrame.contentWindow && els.previewFrame.contentWindow.document;
+    if(doc){
+      doc.open();
+      doc.write(html);
+      doc.close();
+    }
+  }
+}
+
+/* -----------------------
+   Sandbox / script control
+   ----------------------- */
+function updateIframeSandbox(){
+  // By default keep scripts disabled => don't include allow-scripts
+  // But if the user checks allowScripts, add allow-scripts (unsafe)
+  const frame = els.previewFrame;
+  const baseAttrs = ["allow-forms","allow-pointer-lock","allow-popups","allow-modals","allow-downloads"];
+  const attr = baseAttrs.join(' ');
+  if(state.allowScripts){
+    // WARNING: enabling scripts is unsafe for untrusted HTML
+    frame.setAttribute('sandbox', attr + " allow-scripts");
+  } else {
+    frame.setAttribute('sandbox', attr);
+  }
+}
+
+/* -----------------------
+   Compose transformed HTML
+   ----------------------- */
+function generateTransformedHTML(srcHtml = state.sourceHTML, css = state.injectedCSS){
+  // If user didn't provide full document, attempt to wrap
+  if(!srcHtml) return `<body style="font-family:system-ui;padding:18px;color:#666">No HTML loaded.</body>`;
+
+  // Detect minimal html / head
+  const hasHtmlTag = /<\s*html/i.test(srcHtml);
+  const hasHead = /<\s*head/i.test(srcHtml);
+  const hasBody = /<\s*body/i.test(srcHtml);
+
+  // Prepare CSS to inject: ensure <style> exists
+  const styleTag = `<style id="retroify-style">\n${css}\n</style>\n`;
+
+  let out = srcHtml;
+
+  if(hasHead){
+    // insert before </head>
+    if(/<\/\s*head\s*>/i.test(out)){
+      out = out.replace(/<\/\s*head\s*>/i, styleTag + '</head>');
+    } else {
+      // append at start
+      out = styleTag + out;
+    }
+  } else if(hasHtmlTag && hasBody){
+    // find <body ...> and inject right after
+    out = out.replace(/<\s*body[^>]*>/i, match => match + '\n' + styleTag);
+  } else {
+    // no html/head/body — wrap minimal document
+    out = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">${styleTag}</head><body>${out}</body></html>`;
+  }
+
+  // Additional metadata: mark this HTML as "retroified"
+  out = out.replace(/<\s*html([^>]*)>/i, (m, g1) => `<html ${g1 || ''} data-retroified="true">`);
+
+  return out;
+}
+
+/* -----------------------
+   Download helpers
+   ----------------------- */
+function downloadTransformedHTML(){
+  if(!state.sourceHTML){
+    alert('No source loaded. Upload/paste HTML first.');
+    return;
+  }
+  const html = generateTransformedHTML(state.sourceHTML, state.injectedCSS);
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const name = 'retroified.html';
+  triggerDownload(blob, name);
+  setStatus('Downloaded transformed HTML');
+}
+
+function downloadCSSOnly(){
+  const css = els.cssEditor.value || '';
+  const blob = new Blob([css], {type:'text/css;charset=utf-8'});
+  triggerDownload(blob, 'retroified.css');
+  setStatus('Downloaded CSS file');
+}
+
+function triggerDownload(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 2000);
+}
+
+/* -----------------------
+   Utility: minify & beautify CSS (basic)
+   ----------------------- */
+function minifyCSS(css){
+  return css.replace(/\/\*[\s\S]*?\*\//g,'') // strip comments
+            .replace(/\s+/g,' ')
+            .replace(/\s*([{:;,}])\s*/g,'$1')
+            .trim();
+}
+
+function beautifyCSS(css){
+  // naive formatter: put newlines after braces & semicolons
+  let s = css.replace(/\s*{\s*/g,' {\n  ')
+             .replace(/;\s*/g,';\n  ')
+             .replace(/\s*}\s*/g,'\n}\n')
+             .replace(/\n\s+\n/g,'\n');
+  return s.trim();
+}
+
+/* -----------------------
+   Editor helpers
+   ----------------------- */
+function setEditor(text){
+  els.cssEditor.value = text || '';
+}
+
+function setStatus(msg, isError){
+  els.status.textContent = msg || '';
+  if(isError) els.status.style.color = '#ffb4b4';
+  else els.status.style.color = 'var(--muted)';
+}
+
+/* -----------------------
+   Init app
+   ----------------------- */
+init();
+
+/* -----------------------
+   Expose for dev console
+   ----------------------- */
+window.retroify = {
+  setPreset: setActivePreset,
+  getHTML: () => generateTransformedHTML(),
+  renderPreview,
+  setCSS: (s) => { els.cssEditor.value = s; state.injectedCSS = s; renderPreview(); }
+};
+</script>
+</body>
+</html>
